@@ -1,0 +1,43 @@
+name: push dockerfile and compose to ec2
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  Deploy-Main:
+    runs-on: ubuntu
+    steps:
+
+      - uses: actions/checkout@v3
+      - name: Set up JDK 11
+        uses: actions/setup-java@v3
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+
+      - name: Docker build & push
+        if: contains(github.ref, 'main')
+        run: |
+          docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
+          docker build -f spring-server-main -t ${{ secrets.DOCKER_USERNAME }}/my-docker-practice .
+          docker push ${{ secrets.DOCKER_USERNAME }}/my-docker-practice
+
+      - name: Deploy to prod
+        uses: appleboy/ssh-action@master
+        if: contains(github.ref, 'main')
+        with:
+          host: ${{ secrets.HOST_DNS}} # EC2 퍼블릭 IPv4 DNS
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: GITHUB_SHA
+          script: |
+            sudo docker ps
+            sudo docker pull ${{ secrets.DOCKER_USERNAME }}/my-docker-practice
+            sudo docker run -d -p 8080:8080 ${{ secrets.DOCKER_USERNAME }}/my-docker-practice
+            sudo docker image prune -f
+
